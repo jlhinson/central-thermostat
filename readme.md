@@ -6,9 +6,12 @@ This is a project that I am working on in my spare time as a hobby. There will b
 - Fritzing project includes all components on breadboard and schematic
 - MQTT is the protocol used for communication
 
-## In Progress
+## Before 1.0
+- Switch to smaller relays for space savings
 - Custom board to house in plastic enclosure
-- May switch to wired instead of wireless
+
+## Future work
+- Switch to wired instead of wireless
 
 *Thermostat-for-Central  Copright (C) 2017  John Hinson
 GNU GPL-3.0+ License*
