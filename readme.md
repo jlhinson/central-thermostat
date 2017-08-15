@@ -15,3 +15,5 @@ This is a project that I am working on in my spare time as a hobby. There will b
 
 *Thermostat-for-Central  Copright (C) 2017  John Hinson
 GNU GPL-3.0+ License*
+
+Only a test...
