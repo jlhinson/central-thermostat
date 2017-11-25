@@ -7,6 +7,7 @@ This is a project that I am working on in my spare time as a hobby. There will b
 - MQTT is the protocol used for communication
 
 ## Before 1.0
+- Confirm whether changeover valve energized for heating or cooling
 - Switch to smaller relays for space savings
 - Custom board to house in plastic enclosure
 
@@ -15,5 +16,3 @@ This is a project that I am working on in my spare time as a hobby. There will b
 
 *Thermostat-for-Central  Copright (C) 2017  John Hinson
 GNU GPL-3.0+ License*
-
-Only a test...

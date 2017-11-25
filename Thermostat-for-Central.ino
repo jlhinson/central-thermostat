@@ -20,8 +20,8 @@ bool _errorSd = errorSd; //track SD error change
 
 // wifi intialize
 // =================================================================
-char ssid[] = "jlhnetwork2g"; //  your network SSID (name)
-char pass[] = "H61dxU>jmG"; // your network password
+char ssid[] = "ssid"; //  your network SSID (name)
+char pass[] = "pass"; // your network password
 int status = WL_IDLE_STATUS; // the Wifi radio's status
 boolean wifiNotify = false; // track wifi connection notification
 unsigned long lastWifiAttempt = 0; // track connect attempt to delay repeated attempts
@@ -38,6 +38,8 @@ WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 unsigned long lastMqttAttempt = 0; // track connect attempt to delay repeated attempts
 bool errorMqtt = false; // track mqtt error
+IPAddress mqttServer(1, 1, 1, 1);
+
 
 // dht initialize
 // =================================================================
@@ -91,6 +93,7 @@ unsigned long coolDown = millis(); //used to prevent compressor damage
 bool inDelay = false; //used to indicate if in delay timer
 float ot = 0; //outdoor temp
 String oh = "0%"; //outdoor humidity, formated this way due to wunderground API response
+unsigned long lastWeatherUpdate = 0; //keep track of weather updates
 String systemMode; //Cool, Heat, Aux, Off
 String _systemMode = "Off"; //used for comparison
 String fanMode; //Auto, On
@@ -110,7 +113,12 @@ void setup() {
   }*/
 
   if (!SD.begin(chipSelect)) { //start SD
-    Serial.println("SD initialization failed");
+    myLog("SD initialization failed");
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("SD initialization failed");
+    display.display();
+    delay(2000);
     errorSd = true;
   }
 
@@ -160,9 +168,9 @@ void setup() {
     SP = atof(SPStr);
   } else {
     myFile = SD.open("sp.txt", FILE_WRITE);
-    myFile.println("74");
+    myFile.println("71");
     myFile.close();
-    SP = 74;
+    SP = 71;
   }
 
   WiFi.setPins(8,7,4,2); // Define the WINC1500 board connections
@@ -196,7 +204,7 @@ void setup() {
   
 
   if (WiFi.status() == WL_NO_SHIELD) { // check for the presence of the shield and don't continue if not present
-    Serial.println("No wifi shield. Program will not continue.");
+    myLog("No wifi shield. Program will not continue.");
     display.clearDisplay();
     display.setCursor(0,0);
     display.println("No wifi shield. Program will not continue.");
@@ -204,14 +212,14 @@ void setup() {
     while (true);
   }
 
-  client.setServer("192.168.8.5", 1883); // set pubsubclient values
+  client.setServer(mqttServer, 1883); // set pubsubclient values
   client.setCallback(callback);
 
   dht.begin(); // setup dht
   
   delay(2000); // let things settle
 
-  int watchdogMax = Watchdog.enable(); // enable watchdog with max timeout
+  int watchdogTime = Watchdog.enable(10000); // enable watchdog with 10s timeout
 }
 
 // =================================================================
@@ -318,10 +326,14 @@ void loop() {
   measure(); // take measurments and publish
 
   checkCompressor(); // check how long the compressor has been running
+
+  Watchdog.reset(); // reset the watchdog
   
-  checkErrors(); // check for errors; if mqtt connection error, entire loop will be delayed ~15 seconds due to connection timeout in library
+  checkErrors(); // check for errors; if mqtt connection error, entire loop will be delayed ~5 seconds due to connection timeout in library
 
   checkButtons(); // check for button presses to enter manual mode
+
+  checkWeather(); // ensure weather is still updating
 
   Watchdog.reset(); // reset the watchdog
 }
@@ -358,10 +370,10 @@ void mqttSend(String type, String msg) {
     char _topic[topic.length()+1];
     topic.toCharArray(_topic, topic.length()+1);
     if (!client.publish(_topic, _msg)) {
-      Serial.println("MQTT message failed. Client connected.");
+      myLog("MQTT message failed. Client connected.");
     }
   } else {
-    Serial.println("MQTT message failed. Client disconnected.");
+    myLog("MQTT message failed. Client disconnected.");
     return;
   }
 }
@@ -379,7 +391,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   JsonObject& root = jsonBuffer.parseObject(message);
   // test if parsing succeeds.
   if (!root.success()) {
-    Serial.println("Failed to parse JSON recieved in MQTT message");
+    myLog("Failed to parse JSON recieved in MQTT message");
     return;
   }
   // create string variable for comparison
@@ -464,6 +476,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     // set new outdoor values
     ot = temp_f;
     oh = relative_humidity;
+    lastWeatherUpdate = millis();
   }
   updateDisplay();
 }
@@ -473,13 +486,13 @@ void callback(char* topic, byte* payload, unsigned int length) {
 void connections() {
   // connect to wifi
   if (WiFi.status() != WL_CONNECTED) {
-    // connect to network
     errorWifi = true; // wifi not connected
     unsigned long now = millis();
     if (now - lastWifiAttempt > 10000) {
       lastWifiAttempt = now;
-      Serial.print("Conencting to SSID: ");
-      Serial.println(ssid);
+      String dataString = "Connecting to SSID: ";
+      dataString += ssid;
+      myLog(dataString);
       wifiNotify = false;
       status = WiFi.begin(ssid, pass);
     }
@@ -489,8 +502,9 @@ void connections() {
     // you're connected now
     errorWifi = false; // wifi now connected
     IPAddress ip = WiFi.localIP();
-    Serial.print("Wifi connected. IP: ");
-    Serial.println(ip);
+    String dataString = "Wifi connected, IP: ";
+    dataString += String(ip[0]) += String(".") += String(ip[1]) += String(".") += String(ip[2]) += String(".") += String(ip[3]);
+    myLog(dataString);
     display.clearDisplay();
     display.setCursor(0,0);
     display.println("Wifi connected. IP:");
@@ -502,15 +516,14 @@ void connections() {
   }
   // connect to mqtt
   if (WiFi.status() == WL_CONNECTED && !client.connected()) {
+    Watchdog.reset(); // reset the watchdog
     if (!errorMqtt) {
       errorMqtt = true; // mqtt not connected
     }
     unsigned long now = millis();
     if (now - lastMqttAttempt > 15000) { //attempt to connect
       lastMqttAttempt = now;
-      Serial.print("MQTT connection failed, rc="); // State why connection failed
-      Serial.println(client.state());
-      Serial.println("Connecting to MQTT");
+      myLog("Connecting to MQTT");
       char _deviceId[deviceId.length()+1]; //convert deviceId to char
       deviceId.toCharArray(_deviceId, deviceId.length()+1);
       String sub = "thermostats/" + deviceId; //create char for subscription call
@@ -527,11 +540,11 @@ void connections() {
         client.subscribe("thermostats"); //subscribe
         client.subscribe(_sub);
         client.subscribe("weather/current");
-        Serial.println("Connected to MQTT");
+        myLog("Connected to MQTT");
         errorMqtt = false; // mqtt connected
         lastMqttAttempt = 0;
         if (!client.publish("connected", _msg)) {
-          Serial.println("MQTT conencted message failed to send");
+          myLog("MQTT conencted message failed to send");
         }
         mqttSendS("status", "fanMode", fanMode); //send all variables at startup and reconnects in case manually modified or errored while offline
         mqttSendS("status", "systemMode", systemMode);
@@ -556,6 +569,12 @@ void connections() {
         } else {
           mqttSendS("error", "errorSd", "false");
         }
+        Watchdog.reset(); // reset the watchdog
+      } else {
+        Watchdog.reset(); // reset the watchdog
+        String dataString = "MQTT connection failed, rc=";
+        dataString += String(client.state()); // State why connection failed
+        myLog(dataString);
       }
     }
   }
@@ -565,7 +584,7 @@ void connections() {
 // =================================================================
 void measure() {
   unsigned long now = millis();
-  if (now - lastMeasure > 20000) {
+  if (now - lastMeasure > 30000) {
     lastMeasure = now;
     // Read temperature as Fahrenheit (isFahrenheit = true)
     it = dht.readTemperature(true);
@@ -575,7 +594,7 @@ void measure() {
     if (isnan(it) || isnan(ih)) {
       it = 0;
       ih = 0;
-      Serial.println("Error with DHT module");
+      myLog("Error with DHT module");
       errorDht = true;
       return;
     }
@@ -699,15 +718,18 @@ void checkErrors() {
   if (errorCompressor1 != _errorCompressor1) {
     _errorCompressor1 = errorCompressor1;
     mqttSendF("error", "errorCompressor1", errorCompressor1);
+    myLog("Compressor1 error");
   }
   if (errorCompressor2 != _errorCompressor2) {
     _errorCompressor2 = errorCompressor2;
     mqttSendF("error", "errorCompressor2", errorCompressor2);
+    myLog("Compressor2 error");
   }
   if (errorDht != _errorDht) {
     _errorDht = errorDht;
     if (errorDht) {
       mqttSendS("error", "errorDht", "true");
+      myLog("errorDHT");
     }
     if (!errorDht) {
       mqttSendS("error", "errorDht", "false");
@@ -717,6 +739,7 @@ void checkErrors() {
     _errorSd = errorSd;
     if (errorSd) {
       mqttSendS("error", "errorSd", "true");
+      myLog("errorSd");
     }
     if (!errorSd) {
       mqttSendS("error", "errorSd", "false");
@@ -763,6 +786,7 @@ void checkErrors() {
     if (errorExist) {
       errorExist = false;
       errorMsg = "";
+      myLog("No more errors");
       updateDisplay();
     }
   }
@@ -872,6 +896,7 @@ void checkButtons() {
       if (digitalRead(bButton) == HIGH) { //clear compressor errors
         errorCompressor1 = 0;
         errorCompressor2 = 0;
+        exitLoop = true;
       }
       if (digitalRead(cButton) == HIGH && (millis()-cPressed) > 500) { //exit
         exitLoop = true;
@@ -881,6 +906,15 @@ void checkButtons() {
   }
   updateDisplay();
   delay(300); //prevent triggering c button press
+}
+
+// ensure weather is still updating
+// =================================================================
+void checkWeather() {
+  if (millis() - lastWeatherUpdate > 700000) { //reset outdoor to 0 if no longer receiving updates
+    ot = 0;
+    oh = "0%";
+  }
 }
 
 // update txt file when system, fan, or sp change
@@ -989,6 +1023,20 @@ void updateDisplay() {
   }
   display.println(fanMode);
   display.display();
+}
+
+// write to log file
+// =================================================================
+void myLog(String myMessage) {
+  Serial.println(myMessage);
+  myFile = SD.open("log.txt", FILE_WRITE);
+  if (!myFile) {
+    errorSd = true;
+    Serial.println("Cannot write to log file");
+    return;
+  }
+  myFile.println(myMessage);
+  myFile.close();
 }
 
 // set rgb led
