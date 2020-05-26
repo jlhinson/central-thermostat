@@ -1,15 +1,15 @@
 // libraries
 // =================================================================
-#include <Adafruit_SleepyDog.h>
+#include <Adafruit_SleepyDog.h> //1.2.0
 #include <SPI.h>
 #include <SD.h>
 #include <Wire.h>
-#include <WiFi101.h> //change connection timeout from 20000 to 5000 in WiFiClient.cpp
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <DHT.h>
-#include <PubSubClient.h> //change MQTT_SOCKET_TIMEOUT to 5 in this file
-#include <ArduinoJson.h>
+#include <WiFi101.h> //0.16.0 change connection timeout from 20000 to 5000 in WiFiClient.cpp
+#include <Adafruit_GFX.h> //1.8.2
+#include <Adafruit_SSD1306.h> //2.2.1
+#include <DHT.h> //1.3.9
+#include <PubSubClient.h> //2.7.0 change MQTT_SOCKET_TIMEOUT to 5 in this file
+#include <ArduinoJson.h> //6.15.2
 
 // sd intialize
 // =================================================================
@@ -1045,4 +1045,3 @@ void setColor(int red, int green) {
   analogWrite(redPin, red);
   analogWrite(greenPin, green);
 }
-
